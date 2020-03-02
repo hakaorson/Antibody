@@ -1,14 +1,14 @@
 from torch import nn
 import torch
 import dgl
-
-
-class SingleGCN(nn.Module):
+from dgl.nn.pytorch import GraphConv
+'''
+class MPNN(nn.Module):
     def __init__(self, in_feats, out_feats, activate, dropout, bias=True):
         super().__init__()
         self.full_conn = torch.nn.Linear(in_feats, out_feats, bias=bias)
         self.dropout = torch.nn.Dropout() if dropout else None
-        self.activation = torch.nn.ReLU() if activate else None
+        self.activation = torch.nn.Sigmoid() if activate else None
 
     def gcn_msg(self, edge):
         msg_data = edge.src['hidden']
@@ -28,6 +28,24 @@ class SingleGCN(nn.Module):
         if self.dropout:
             hidden = self.dropout(hidden)
         dgl_data.update_all(self.gcn_msg, self.gcn_reduce, self.gcn_node)
+        return dgl_data
+'''
+
+
+class SingleGCN(nn.Module):
+    def __init__(self, in_feats, out_feats, activate, dropout, bias=True):
+        super().__init__()
+        self.dropout = torch.nn.Dropout() if dropout else None
+        self.activation = torch.nn.Sigmoid() if activate else None
+        self.gcn = GraphConv(
+            in_feats, out_feats, activation=self.activation, bias=bias)
+
+    def forward(self, dgl_data: dgl.DGLGraph):
+        hidden = dgl_data.ndata['hidden']
+        # print(hidden.detach().numpy()[:3])
+        if self.dropout:
+            hidden = self.dropout(hidden)
+        dgl_data.ndata['hidden'] = self.gcn(dgl_data, hidden)
         return dgl_data
 
 
@@ -54,13 +72,26 @@ class ReadOut(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.full_conn = nn.Linear(args.gcn_output_size, args.graph_feat_size)
-        self.activate = nn.ReLU()
+        self.activate = nn.Sigmoid()
 
     def forward(self, dgl_data: dgl.DGLGraph):
         graph_data = torch.mean(dgl_data.ndata['hidden'], 0)
         graph_feature = self.full_conn(graph_data)
         graph_feat_act = self.activate(graph_feature)
         return graph_feat_act
+
+
+class NodeClass(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.full_conn = nn.Linear(args.gcn_output_size, 1)
+        self.activate = nn.Sigmoid()
+
+    def forward(self, dgl_data: dgl.DGLGraph):
+        nodes_data = dgl_data.ndata['hidden']
+        digits = self.full_conn(nodes_data)
+        result = self.activate(digits)
+        return result
 
 
 class GraphFeatMatch(nn.Module):
@@ -86,6 +117,8 @@ class SimpleModel(nn.Module):
         self.gcn_process_secondary = MultiGCN(args)
         self.read_out_primary = ReadOut(args)
         self.read_out_secondary = ReadOut(args)
+        self.node_primary = NodeClass(args)
+        self.node_secondary = NodeClass(args)
         self.match_value = GraphFeatMatch(args)
 
     def forward(self, dgl_primary, dgl_secondary):
@@ -94,11 +127,15 @@ class SimpleModel(nn.Module):
         dgl_secondary.ndata['hidden'] = dgl_secondary.ndata['feature']
         gcn_primary = self.gcn_process_primary(dgl_primary)
         gcn_secondary = self.gcn_process_secondary(dgl_secondary)
+
         feat_primary = self.read_out_primary(gcn_primary)
         feat_secondaty = self.read_out_secondary(gcn_secondary)
         distance = self.match_value(feat_primary, feat_secondaty)
         # distance = torch.nn.CosineSimilarity(feat_primary, feat_secondaty,0)
-        return distance
+
+        node_pred_primary = self.node_primary(gcn_primary)
+        node_pred_secondary = self.node_secondary(gcn_secondary)
+        return distance, node_pred_primary, node_pred_secondary
 
 
 if __name__ == '__main__':

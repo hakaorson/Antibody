@@ -10,12 +10,20 @@ def train(args, model: torch.nn.Module, data):
         loss = 0
         for item in batch_data:
             match_target = item.label.reshape(-1)
-            antibody_node_target = item.antibody.ndata['label']
-            antigen_node_target = item.antigen.ndata['label']
-            logits = model(item.antibody, item.antigen)
-            loss += loss_fnc(logits, match_target)
-            print(logits.detach().numpy(), match_target.detach().numpy())
+            primary_node_target = item.antibody.ndata['label']
+            secondary_node_target = item.antigen.ndata['label']
+            logits, pred_primary, pred_secondary = model(
+                item.antibody, item.antigen)
+            loss_match = loss_fnc(logits, match_target)
+            loss_primary = loss_fnc(pred_primary, primary_node_target)
+            loss_secondary = loss_fnc(pred_secondary, secondary_node_target)
+            loss = loss_match+loss_primary+loss_secondary
+
+        print(logits.detach().numpy(), match_target.detach().numpy())
+        print(pred_primary.detach().numpy()[
+              :10], primary_node_target.detach().numpy()[:10])
         print(loss.detach().numpy())
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

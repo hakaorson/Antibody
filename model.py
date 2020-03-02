@@ -4,10 +4,9 @@ from Model import trainer
 from Model import base_model
 import torch
 import random
-'''
+
 torch.manual_seed(666)
 random.seed(666)
-'''
 
 
 def arg_update(args, example):
