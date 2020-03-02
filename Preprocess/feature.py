@@ -1,4 +1,5 @@
 import numpy as np
+import random
 TEMP_FEATURE = {
     'C': [1.77, 0.13, 2.43, 1.54, 6.35, 0.17, 0.41],
     'S': [1.31, 0.06, 1.60, -0.04, 5.70, 0.20, 0.28],
@@ -50,14 +51,24 @@ class Feature():
     def __init__(self, res_list):
         self.res_list = res_list
         self.res_simples = [self.get_simple(res) for res in res_list]
-        self.all_feature = [TEMP_FEATURE[res_char]
-                            for res_char in self.res_simples]
-        self.all_feature_array = np.array(self.all_feature)
-        # print(self.all_feature_array.shape)
+        self.all_res_simples = list(TEMP_FEATURE.keys())
+        random.shuffle(self.all_res_simples)
+        self.temp_feat = np.array([TEMP_FEATURE[res_char]
+                                   for res_char in self.res_simples])
+        self.onehot_feat = np.array([self.one_hot(
+            res_char, self.all_res_simples) for res_char in self.res_simples])
+        self.all_feature_array = np.concatenate(
+            (self.temp_feat, self.onehot_feat), -1)
+        self.all_feature = self.all_feature_array.tolist()
 
     def get_simple(self, res):
         return MAPPING[res.resname] if res.resname in MAPPING.keys() else 'X'
+        # return MAPPING[res] if res in MAPPING.keys() else 'X'
+
+    def one_hot(self, val, val_list: list):
+        result = [0 for _ in range(len(val_list))]
+        index = val_list.index(val)
+        result[index] = 1
+        return result
 
 
-if __name__ == '__main__':
-    pass

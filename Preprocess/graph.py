@@ -1,10 +1,10 @@
 import networkx as nx
 from Preprocess import feature
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 
 
 class NXGraph():
-    def __init__(self, args, name, data):
+    def __init__(self, name, data):
         self.name = name
         self.res_list = data[0]
         self.feature = feature.Feature(self.res_list)

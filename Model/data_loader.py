@@ -3,6 +3,34 @@ import dgl
 import os
 import networkx as nx
 import torch
+import multiprocessing as multi
+multi.set_start_method('spawn', True)
+
+
+def single_read(path, name):
+    nxgraph_antibody = nx.read_gpickle(
+        os.path.join(path, name, 'antibody.gpickle'))
+    nxgraph_antigen = nx.read_gpickle(
+        os.path.join(path, name, 'antigen.gpickle'))
+    dgl_antibody = nx_to_dgl(nxgraph_antibody)
+    dgl_antigen = nx_to_dgl(nxgraph_antigen)
+    return [dgl_antibody, dgl_antigen]
+
+
+def nx_to_dgl(nx_graph: nx.Graph):
+    dgl_graph = dgl.DGLGraph()
+    for node in nx_graph.nodes:
+        data = nx_graph.nodes[node]
+        data['feature'] = torch.tensor(
+            data['feature'], dtype=torch.float32).reshape(1, -1)
+        data['label'] = torch.tensor(
+            data['label'], dtype=torch.float32).reshape(1, -1)
+        dgl_graph.add_nodes(1, data)
+    for v0, v1 in nx_graph.edges:
+        dgl_graph.add_edge(v0, v1)
+        dgl_graph.add_edge(v1, v0)
+    # print(dgl_graph.ndata['hidden'].shape)
+    return dgl_graph
 
 
 class BatchGenerator():
@@ -34,7 +62,7 @@ class SingleSample():
 
 class StructData():
     def __init__(self, args):
-        self.pos_data = self.read_file(args.process_path)
+        self.pos_data = self.multi_read(args.process_path)
         self.neg_data = self.expand_neg_data(self.pos_data, args.neg_rate)
         self.all_data_with_label = [
             pos+[1] for pos in self.pos_data]+[neg+[0] for neg in self.neg_data]
@@ -43,18 +71,16 @@ class StructData():
         self.train_data, self.valid_data, self.test_data = self.split(
             self.all_structed_data, args.split_rate)
 
-    def read_file(self, path):
+    def multi_read(self, path):
+        anti_names = os.listdir(path)
         result = []
-        names = os.listdir(path)
-        for name in names:
-            nxgraph_antibody = nx.read_gpickle(
-                os.path.join(path, name, 'antibody.gpickle'))
-            nxgraph_antigen = nx.read_gpickle(
-                os.path.join(path, name, 'antigen.gpickle'))
-            dgl_antibody = self.nx_to_dgl(nxgraph_antibody)
-            dgl_antigen = self.nx_to_dgl(nxgraph_antigen)
-            result.append([dgl_antibody, dgl_antigen])
-        return result
+        pool = multi.Pool(processes=10)
+        for name in anti_names:
+            result.append(pool.apply_async(single_read, (path, name,)))
+        pool.close()
+        pool.join()
+        result_get = [item.get() for item in result]
+        return result_get
 
     def expand_neg_data(self, pos_data, rate):
         size_pos = len(pos_data)
@@ -68,21 +94,6 @@ class StructData():
             neg_data.append([pos_data[choose_antibody][0],
                              pos_data[choose_antigen][1]])
         return neg_data
-
-    def nx_to_dgl(self, nx_graph: nx.Graph):
-        dgl_graph = dgl.DGLGraph()
-        for node in nx_graph.nodes:
-            data = nx_graph.nodes[node]
-            data['feature'] = torch.tensor(
-                data['feature'], dtype=torch.float32).reshape(1, -1)
-            data['label'] = torch.tensor(
-                data['label'], dtype=torch.float32).reshape(1, -1)
-            dgl_graph.add_nodes(1, data)
-        for v0, v1 in nx_graph.edges:
-            dgl_graph.add_edge(v0, v1)
-            dgl_graph.add_edge(v1, v0)
-        # print(dgl_graph.ndata['hidden'].shape)
-        return dgl_graph
 
     def split(self, data, split_rate):
         nums = list(map(int, split_rate.split(' ')))

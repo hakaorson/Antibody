@@ -54,7 +54,7 @@ class ReadOut(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.full_conn = nn.Linear(args.gcn_output_size, args.graph_feat_size)
-        self.activate = nn.Sigmoid()
+        self.activate = nn.ReLU()
 
     def forward(self, dgl_data: dgl.DGLGraph):
         graph_data = torch.mean(dgl_data.ndata['hidden'], 0)
@@ -82,19 +82,22 @@ class GraphFeatMatch(nn.Module):
 class SimpleModel(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.gcn_process = MultiGCN(args)
-        self.read_out = ReadOut(args)
+        self.gcn_process_primary = MultiGCN(args)
+        self.gcn_process_secondary = MultiGCN(args)
+        self.read_out_primary = ReadOut(args)
+        self.read_out_secondary = ReadOut(args)
         self.match_value = GraphFeatMatch(args)
 
     def forward(self, dgl_primary, dgl_secondary):
         # 注意要初始化，因为hidden已经更改了
         dgl_primary.ndata['hidden'] = dgl_primary.ndata['feature']
         dgl_secondary.ndata['hidden'] = dgl_secondary.ndata['feature']
-        gcn_primary = self.gcn_process(dgl_primary)
-        gcn_secondary = self.gcn_process(dgl_secondary)
-        feat_primary = self.read_out(gcn_primary)
-        feat_secondaty = self.read_out(gcn_secondary)
+        gcn_primary = self.gcn_process_primary(dgl_primary)
+        gcn_secondary = self.gcn_process_secondary(dgl_secondary)
+        feat_primary = self.read_out_primary(gcn_primary)
+        feat_secondaty = self.read_out_secondary(gcn_secondary)
         distance = self.match_value(feat_primary, feat_secondaty)
+        # distance = torch.nn.CosineSimilarity(feat_primary, feat_secondaty,0)
         return distance
 
 
