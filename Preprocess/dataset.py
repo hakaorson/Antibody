@@ -2,6 +2,7 @@ from Preprocess import pdb
 from Preprocess import graph
 import os
 import networkx as nx
+import numpy as np
 import multiprocessing as multi
 multi.set_start_method('spawn', True)
 
@@ -26,11 +27,22 @@ def generate_dataset(args):
     p_path = args.process_path
     complex_names = get_complex_names(o_path)
     os.makedirs(p_path, exist_ok=True)
+    result = []
     pool = multi.Pool(processes=10)
     for name in complex_names:
-        pool.apply_async(single_process, (args, name,))
+        result.append(pool.apply_async(single_process, (args, name,)))
     pool.close()
     pool.join()
+    antibody_infos, antigen_infos = [], []
+    for item in result:
+        value = item.get()
+        if value is not None:
+            antibody_infos.append(value[0])
+            antigen_infos.append(value[1])
+    antibody_infos = np.sum(np.array(antibody_infos), axis=0)
+    antigen_infos = np.sum(np.array(antigen_infos), axis=0)
+    print(antibody_infos)
+    print(antigen_infos)
 
 
 def single_process(args, name):
@@ -39,11 +51,16 @@ def single_process(args, name):
     path_antigen = os.path.join(args.origin_path, name+'ag.pdb')
     antibody_data, antigen_data = pdb.pair_process(
         args, path_antibody, path_antigen)
-    antibody_graph = graph.NXGraph(single_name+'_antibody', antibody_data)
-    antigen_graph = graph.NXGraph(single_name+'_antigen', antigen_data)
-    storation(os.path.join(args.process_path, single_name),
-              antibody_graph.graph_data, antigen_graph.graph_data)
-    print(single_name)
+    if antibody_data and antigen_data:
+        antibody_graph = graph.NXGraph(single_name+'_antibody', antibody_data)
+        antigen_graph = graph.NXGraph(single_name+'_antigen', antigen_data)
+        storation(os.path.join(args.process_path, single_name),
+                  antibody_graph, antigen_graph)
+        print(single_name, '-Success')
+        return [antibody_graph.basic_infos, antigen_graph.basic_infos]
+    else:
+        print(single_name, '-False')
+        return None
 
 
 if __name__ == '__main__':

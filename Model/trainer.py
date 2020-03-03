@@ -1,32 +1,53 @@
 import torch
 from sklearn import metrics
+import torch.nn as nn
+
+
+class myloss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, target, predict):
+        pos_log = torch.log(target)
+        neg_log = torch.log(1.0-target)
+        digits = pos_log*predict+neg_log*(1.0-predict)
+        dig_sum = torch.mean(digits)
+        return -dig_sum
 
 
 def train(args, model: torch.nn.Module, data):
-    loss_fnc = torch.nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    '''
+    loss_fnc = torch.nn.BCELoss()  # 这个是问题的关键，有些样本无正样本，就会直接崩溃
+    # loss_fnc = torch.nn.MSELoss()
+    '''
+    # loss_weight = torch.tensor([1, 10], dtype=torch.float32)
+    loss_fnc = torch.nn.CrossEntropyLoss()
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     model.train()
+    epoch_loss = 0
     for batch_data in data:
-        loss = 0
+        batch_loss = 0
+        # print('******************************************************')
         for item in batch_data:
-            match_target = item.label.reshape(-1)
-            primary_node_target = item.antibody.ndata['label']
-            secondary_node_target = item.antigen.ndata['label']
-            logits, pred_primary, pred_secondary = model(
-                item.antibody, item.antigen)
-            loss_match = loss_fnc(logits, match_target)
-            loss_primary = loss_fnc(pred_primary, primary_node_target)
-            loss_secondary = loss_fnc(pred_secondary, secondary_node_target)
-            loss = loss_match+loss_primary+loss_secondary
 
-        print(logits.detach().numpy(), match_target.detach().numpy())
-        print(pred_primary.detach().numpy()[
-              :10], primary_node_target.detach().numpy()[:10])
-        print(loss.detach().numpy())
+            primary_node_target = item.antibody_dgl.ndata['label'].long(
+            ).reshape(-1)
+            '''
+            primary_node_target = item.antibody_dgl.ndata['label']
+            '''
+            pred_primary = model(
+                item.antibody_dgl, item.antibody_matrix, item.antigen_dgl, item.antigen_matrix)
+            loss = loss_fnc(pred_primary, primary_node_target)
 
+            # print('loss', loss.detach().numpy())
+
+            batch_loss += loss
         optimizer.zero_grad()
-        loss.backward()
+        batch_loss.backward()
         optimizer.step()
+        epoch_loss += batch_loss
+    print(epoch_loss.detach().numpy())
     return model
 
 

@@ -60,6 +60,8 @@ class Feature():
         self.all_feature_array = np.concatenate(
             (self.temp_feat, self.onehot_feat), -1)
         self.all_feature = self.all_feature_array.tolist()
+        # TODO
+        # self.all_feature = self.onehot_feat
 
     def get_simple(self, res):
         return MAPPING[res.resname] if res.resname in MAPPING.keys() else 'X'
@@ -70,5 +72,3 @@ class Feature():
         index = val_list.index(val)
         result[index] = 1
         return result
-
-

@@ -12,23 +12,28 @@ def single_read(path, name):
         os.path.join(path, name, 'antibody.gpickle'))
     nxgraph_antigen = nx.read_gpickle(
         os.path.join(path, name, 'antigen.gpickle'))
-    dgl_antibody = nx_to_dgl(nxgraph_antibody)
-    dgl_antigen = nx_to_dgl(nxgraph_antigen)
-    return [dgl_antibody, dgl_antigen]
+    dgl_antibody = nx_to_dgl(nxgraph_antibody.graph_data)
+    dgl_antigen = nx_to_dgl(nxgraph_antigen.graph_data)
+    return [[dgl_antibody, nxgraph_antibody.matrix, nxgraph_antibody.name], [dgl_antigen, nxgraph_antigen.matrix, nxgraph_antigen.name]]
 
 
 def nx_to_dgl(nx_graph: nx.Graph):
     dgl_graph = dgl.DGLGraph()
     for node in nx_graph.nodes:
         data = nx_graph.nodes[node]
+        ner_num = len(list(nx_graph.neighbors(node)))
         data['feature'] = torch.tensor(
             data['feature'], dtype=torch.float32).reshape(1, -1)
         data['label'] = torch.tensor(
             data['label'], dtype=torch.float32).reshape(1, -1)
+        data['neibors'] = torch.tensor(
+            ner_num, dtype=torch.float32).reshape(1, -1)
         dgl_graph.add_nodes(1, data)
+        dgl_graph.add_edge(node, node)  # 添加自环
     for v0, v1 in nx_graph.edges:
-        dgl_graph.add_edge(v0, v1)
-        dgl_graph.add_edge(v1, v0)
+        if v0 < v1:
+            dgl_graph.add_edge(v0, v1)
+            dgl_graph.add_edge(v1, v0)
     # print(dgl_graph.ndata['hidden'].shape)
     return dgl_graph
 
@@ -55,19 +60,22 @@ class BatchGenerator():
 
 class SingleSample():
     def __init__(self, data):
-        self.antibody = data[0]
-        self.antigen = data[1]
-        self.label = torch.tensor(data[2], dtype=torch.float32)
+        self.antibody_dgl = data[0][0]
+        self.antigen_dgl = data[1][0]
+        self.antibody_matrix = torch.tensor(data[0][1], dtype=torch.float32)
+        self.antigen_matrix = torch.tensor(data[1][1], dtype=torch.float32)
+        self.antibody_name = data[0][2]
+        self.antigen_name = data[1][2]
+        self.label = torch.tensor(data[-1], dtype=torch.float32)
 
 
 class StructData():
     def __init__(self, args):
         self.pos_data = self.multi_read(args.process_path)
         self.neg_data = self.expand_neg_data(self.pos_data, args.neg_rate)
-        self.all_data_with_label = [
-            pos+[1] for pos in self.pos_data]+[neg+[0] for neg in self.neg_data]
-        self.all_structed_data = [SingleSample(
-            data)for data in self.all_data_with_label]
+        self.pos_stuct_data = self.get_structed_data(self.pos_data, 1)
+        self.neg_stuct_data = self.get_structed_data(self.neg_data, 0)
+        self.all_structed_data = self.pos_stuct_data+self.neg_stuct_data
         self.train_data, self.valid_data, self.test_data = self.split(
             self.all_structed_data, args.split_rate)
 
@@ -103,3 +111,13 @@ class StructData():
         cut1 = int(rates[0]*len(data))
         cut2 = int((rates[0]+rates[1])*len(data))
         return data[:cut1], data[cut1:cut2], data[cut2:]
+
+    def get_structed_data(self, data, label):
+        digits = [item+[label] for item in data]
+        return [SingleSample(item)for item in digits]
+
+
+if __name__ == '__main__':
+    path = 'D:\\abs_sample_gaopan\\Data\\processed_data'
+    name = '1A3R_L'
+    single_read(path, name)

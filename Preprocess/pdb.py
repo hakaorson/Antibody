@@ -14,13 +14,12 @@ def read_pdb(pdb_file_path):
 def get_chains_antibody(path):
     pdb_model = read_pdb(path)
     dict_keys = list(pdb_model.child_dict.keys())
-    if 'H' in dict_keys or 'L' in dict_keys:
-        chain_h = pdb_model['H'] if 'H' in dict_keys else pdb_model['L']
-        chain_l = pdb_model['L'] if 'L' in dict_keys else pdb_model['H']
+    if 'H' in dict_keys and 'L' in dict_keys:
+        chain_h = pdb_model['H']
+        chain_l = pdb_model['L']
+        return chain_h, chain_l
     else:
-        choose = dict_keys[0]
-        chain_h, chain_l = pdb_model[choose], pdb_model[choose]
-    return chain_h, chain_l
+        return None, None
 
 
 def get_chain_antigen(path):
@@ -115,15 +114,18 @@ def find_interface_between_ag(args, res_list, searchs):
 def pair_process(args, pdb_path_antibody, pdb_path_antigen):
     chain_h, chain_l = get_chains_antibody(pdb_path_antibody)
     chain_a = get_chain_antigen(pdb_path_antigen)
-    res_list_antibody, edges_antibody, searchs_antibody = get_antibody_graph(
-        args, chain_h, chain_l)
-    res_list_antigen, edges_antigen, searchs_antigen = get_antigen_graph(
-        args, chain_a)
-    inter_of_antibody = find_interface_between_ag(
-        args, res_list_antibody, searchs_antigen)
-    inter_of_antigen = find_interface_between_ag(
-        args, res_list_antigen, searchs_antibody)
-    return (res_list_antibody, edges_antibody, inter_of_antibody), (res_list_antigen, edges_antigen, inter_of_antigen)
+    if chain_h and chain_l:
+        res_list_antibody, edges_antibody, searchs_antibody = get_antibody_graph(
+            args, chain_h, chain_l)
+        res_list_antigen, edges_antigen, searchs_antigen = get_antigen_graph(
+            args, chain_a)
+        inter_of_antibody = find_interface_between_ag(
+            args, res_list_antibody, searchs_antigen)
+        inter_of_antigen = find_interface_between_ag(
+            args, res_list_antigen, searchs_antibody)
+        return (res_list_antibody, edges_antibody, inter_of_antibody), (res_list_antigen, edges_antigen, inter_of_antigen)
+    else:
+        return None, None
 
 
 if __name__ == '__main__':

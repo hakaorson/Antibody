@@ -2,140 +2,137 @@ from torch import nn
 import torch
 import dgl
 from dgl.nn.pytorch import GraphConv
-'''
-class MPNN(nn.Module):
-    def __init__(self, in_feats, out_feats, activate, dropout, bias=True):
-        super().__init__()
-        self.full_conn = torch.nn.Linear(in_feats, out_feats, bias=bias)
-        self.dropout = torch.nn.Dropout() if dropout else None
-        self.activation = torch.nn.Sigmoid() if activate else None
-
-    def gcn_msg(self, edge):
-        msg_data = edge.src['hidden']
-        return {'message': msg_data}
-
-    def gcn_reduce(self, node):
-        reduce_data = torch.mean(node.mailbox['message'], 1)
-        return {'reduce': reduce_data}
-
-    def gcn_node(self, node):
-        node_data = node.data['reduce']
-        update_data = self.full_conn(node_data)
-        return {'hidden': update_data}
-
-    def forward(self, dgl_data: dgl.DGLGraph):
-        hidden = dgl_data.ndata['hidden']
-        if self.dropout:
-            hidden = self.dropout(hidden)
-        dgl_data.update_all(self.gcn_msg, self.gcn_reduce, self.gcn_node)
-        return dgl_data
-'''
 
 
 class SingleGCN(nn.Module):
-    def __init__(self, in_feats, out_feats, activate, dropout, bias=True):
+    def __init__(self, in_feats, out_feats):
         super().__init__()
-        self.dropout = torch.nn.Dropout() if dropout else None
-        self.activation = torch.nn.Sigmoid() if activate else None
-        self.gcn = GraphConv(
-            in_feats, out_feats, activation=self.activation, bias=bias)
+        self.acti = nn.ReLU()
+        # self.gcn = GraphConv(in_feats, out_feats, activation=self.acti)
+        self.gcn_weight = nn.Linear(in_feats, out_feats)
 
-    def forward(self, dgl_data: dgl.DGLGraph):
+    def msg_gcn(self, edge):
+        msg = edge.src['hidden']
+        return {'msg': msg}
+
+    def reduce_gcn(self, node):
+        reduce = torch.sum(node.mailbox['msg'], 1)
+        return {'reduce': reduce}
+
+    def forward(self, dgl_data: dgl.DGLGraph, matrix):
+        digits = dgl_data.ndata['hidden']
+        neibors = dgl_data.ndata['neibors']
+        rsqt_neibors = torch.rsqrt(neibors)
+        digits = digits*rsqt_neibors
+        digits = torch.mm(matrix, digits)
+        digits = digits*rsqt_neibors
+        digits = self.gcn_weight(digits)
+        dgl_data.ndata['hidden'] = digits
+        dgl_data.ndata['stack'] = torch.cat(
+            (dgl_data.ndata['hidden'], dgl_data.ndata['stack']), -1)
+        '''
         hidden = dgl_data.ndata['hidden']
-        # print(hidden.detach().numpy()[:3])
-        if self.dropout:
-            hidden = self.dropout(hidden)
-        dgl_data.ndata['hidden'] = self.gcn(dgl_data, hidden)
+        rsqt_neibors = torch.rsqrt(dgl_data.ndata['neibors'])
+
+        digits = hidden*rsqt_neibors
+        dgl_data.ndata['hidden'] = digits
+        dgl_data.update_all(self.msg_gcn, self.reduce_gcn)
+        digits = dgl_data.ndata['reduce']
+        digits = hidden*rsqt_neibors
+
+        digits = self.gcn_weight(digits)
+        dgl_data.ndata['hidden'] = digits
+
+        dgl_data.ndata['stack'] = torch.cat(
+            (dgl_data.ndata['hidden'], dgl_data.ndata['stack']), -1)
+        temp_0 = hidden.detach().numpy()
+        temp_1 = dgl_data.ndata['hidden'].detach().numpy()
+        temp_2 = dgl_data.ndata['stack'].detach().numpy()
+        '''
         return dgl_data
 
 
-class MultiGCN(nn.Module):
+class GCNProcess(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.gcn_layers = nn.ModuleList()
+        self.GCNlayers = nn.ModuleList()
+        self.GCNlayers.append(SingleGCN(28, 32))
+        self.GCNlayers.append(SingleGCN(32, 32))
+        # self.GCNlayers.append(SingleGCN(32, 32))
 
-        self.gcn_layers.append(SingleGCN(
-            args.gcn_input_size, args.gcn_hidden_size, args.activate, args.dropout, args.bias))
-        for index in range(args.hidden_layer):
-            self.gcn_layers.append(SingleGCN(
-                args.gcn_hidden_size, args.gcn_hidden_size, args.activate, args.dropout, args.bias))
-        self.gcn_layers.append(SingleGCN(
-            args.gcn_hidden_size, args.gcn_output_size, args.activate, args.dropout, args.bias))
+    def forward(self, dgl_data, matrix):
+        dgl_data = self.init_dgl_data(dgl_data)
+        for model in self.GCNlayers:
+            dgl_data = model(dgl_data, matrix)
+        return dgl_data
 
-    def forward(self, dgl_data):
-        for layer in self.gcn_layers:
-            dgl_data = layer(dgl_data)
+    def init_dgl_data(self, dgl_data):
+        dgl_data.ndata['hidden'] = dgl_data.ndata['feature']
+        dgl_data.ndata['stack'] = dgl_data.ndata['feature']
         return dgl_data
 
 
-class ReadOut(nn.Module):
+class Attention(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.full_conn = nn.Linear(args.gcn_output_size, args.graph_feat_size)
-        self.activate = nn.Sigmoid()
+        self.attention_process = nn.Linear(92, 92)
+        self.attention_acti = torch.nn.ReLU()
 
-    def forward(self, dgl_data: dgl.DGLGraph):
-        graph_data = torch.mean(dgl_data.ndata['hidden'], 0)
-        graph_feature = self.full_conn(graph_data)
-        graph_feat_act = self.activate(graph_feature)
-        return graph_feat_act
-
-
-class NodeClass(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        self.full_conn = nn.Linear(args.gcn_output_size, 1)
-        self.activate = nn.Sigmoid()
-
-    def forward(self, dgl_data: dgl.DGLGraph):
-        nodes_data = dgl_data.ndata['hidden']
-        digits = self.full_conn(nodes_data)
-        result = self.activate(digits)
+    def forward(self, node_prim, node_second):
+        prim = self.attention_process(node_prim)
+        second = self.attention_process(node_second)
+        matrix = self.attention_acti(torch.mm(
+            prim, torch.transpose(second, 1, 0)))
+        matrix_sqsq = matrix.pow(2).sum(1).sqrt()
+        matrix_alpha = torch.transpose(
+            torch.div(torch.transpose(matrix, 1, 0), matrix_sqsq), 1, 0)
+        result = torch.mm(matrix_alpha, second)
         return result
 
 
-class GraphFeatMatch(nn.Module):
+class Predict(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.full_conn_1 = nn.Linear(
-            args.graph_feat_size*2, args.graph_feat_size)
-        self.full_conn_2 = nn.Linear(args.graph_feat_size, 1)
-        self.activate = nn.Sigmoid()
+        self.predictor = nn.Linear(184, 1, bias=True)
+        self.acti = nn.Sigmoid()
 
-    def forward(self, feat_p, feat_s):
-        concat_feat = torch.cat((feat_p, feat_s), dim=-1)
-        digits = self.full_conn_1(concat_feat)
-        digits = self.full_conn_2(digits)
-        result = self.activate(digits)
-        return result
+    def forward(self, prim, contex):
+        digits = self.predictor(torch.cat((prim, contex), -1))
+        # digits = self.acti(digits)
+        # print('digits', digits.detach().numpy()[0])
+        return digits
+
+
+class Predict_no_att(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.predictor = nn.Linear(92, 2, bias=True)
+        # self.acti = nn.Sigmoid()
+
+    def forward(self, prim):
+        digits = self.predictor(prim)
+        # digits = self.acti(digits)
+        # print('digits', digits.detach().numpy()[0])
+        return digits
 
 
 class SimpleModel(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.gcn_process_primary = MultiGCN(args)
-        self.gcn_process_secondary = MultiGCN(args)
-        self.read_out_primary = ReadOut(args)
-        self.read_out_secondary = ReadOut(args)
-        self.node_primary = NodeClass(args)
-        self.node_secondary = NodeClass(args)
-        self.match_value = GraphFeatMatch(args)
+        self.gcn_process = GCNProcess(args)
+        self.attention = Attention(args)
+        self.predict = Predict(args)
+        self.pred_no_att = Predict_no_att(args)
 
-    def forward(self, dgl_primary, dgl_secondary):
-        # 注意要初始化，因为hidden已经更改了
-        dgl_primary.ndata['hidden'] = dgl_primary.ndata['feature']
-        dgl_secondary.ndata['hidden'] = dgl_secondary.ndata['feature']
-        gcn_primary = self.gcn_process_primary(dgl_primary)
-        gcn_secondary = self.gcn_process_secondary(dgl_secondary)
-
-        feat_primary = self.read_out_primary(gcn_primary)
-        feat_secondaty = self.read_out_secondary(gcn_secondary)
-        distance = self.match_value(feat_primary, feat_secondaty)
-        # distance = torch.nn.CosineSimilarity(feat_primary, feat_secondaty,0)
-
-        node_pred_primary = self.node_primary(gcn_primary)
-        node_pred_secondary = self.node_secondary(gcn_secondary)
-        return distance, node_pred_primary, node_pred_secondary
+    def forward(self, dgl_primary, mat_prim, dgl_secondary, mat_send):
+        node_primary = self.gcn_process(
+            dgl_primary, mat_prim).ndata['stack']
+        node_secondary = self.gcn_process(
+            dgl_secondary, mat_send).ndata['stack']
+        # node_context = self.attention(node_primary, node_secondary)
+        # node_predict = self.predict(node_primary, node_context)
+        node_predict = self.pred_no_att(node_primary)
+        return node_predict
 
 
 if __name__ == '__main__':
