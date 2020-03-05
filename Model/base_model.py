@@ -56,8 +56,12 @@ class GCNProcess(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.GCNlayers = nn.ModuleList()
-        self.GCNlayers.append(SingleGCN(28, 32))
-        self.GCNlayers.append(SingleGCN(32, 32))
+        self.GCNlayers.append(
+            SingleGCN(args.gcn_input_size, args.gcn_hidden_size))
+        self.GCNlayers.append(
+            SingleGCN(args.gcn_hidden_size, args.gcn_output_size))
+        args.gcn_stack_size = args.gcn_input_size+args.gcn_hidden_size * \
+            (args.hidden_layer+1)+args.gcn_output_size
         # self.GCNlayers.append(SingleGCN(32, 32))
 
     def forward(self, dgl_data, matrix):
@@ -75,7 +79,8 @@ class GCNProcess(nn.Module):
 class Attention(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.attention_process = nn.Linear(92, 92)
+        self.attention_process = nn.Linear(
+            args.gcn_stack_size, args.gcn_stack_size)
         self.attention_acti = torch.nn.ReLU()
 
     def forward(self, node_prim, node_second):
@@ -84,8 +89,11 @@ class Attention(nn.Module):
         matrix = self.attention_acti(torch.mm(
             prim, torch.transpose(second, 1, 0)))
         matrix_sqsq = matrix.pow(2).sum(1).sqrt()
+
         matrix_alpha = torch.transpose(
             torch.div(torch.transpose(matrix, 1, 0), matrix_sqsq), 1, 0)
+
+        # matrix_alpha = torch.div(matrix, matrix_sqsq, 0)
         result = torch.mm(matrix_alpha, second)
         return result
 
@@ -93,8 +101,9 @@ class Attention(nn.Module):
 class Predict(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.predictor = nn.Linear(184, 1, bias=True)
-        self.acti = nn.Sigmoid()
+        self.predictor = nn.Linear(
+            args.gcn_stack_size*2, args.label_num, bias=True)
+        # self.acti = nn.Sigmoid()
 
     def forward(self, prim, contex):
         digits = self.predictor(torch.cat((prim, contex), -1))
@@ -103,6 +112,7 @@ class Predict(nn.Module):
         return digits
 
 
+'''
 class Predict_no_att(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -114,6 +124,7 @@ class Predict_no_att(nn.Module):
         # digits = self.acti(digits)
         # print('digits', digits.detach().numpy()[0])
         return digits
+'''
 
 
 class SimpleModel(nn.Module):
@@ -122,16 +133,15 @@ class SimpleModel(nn.Module):
         self.gcn_process = GCNProcess(args)
         self.attention = Attention(args)
         self.predict = Predict(args)
-        self.pred_no_att = Predict_no_att(args)
 
     def forward(self, dgl_primary, mat_prim, dgl_secondary, mat_send):
         node_primary = self.gcn_process(
             dgl_primary, mat_prim).ndata['stack']
         node_secondary = self.gcn_process(
             dgl_secondary, mat_send).ndata['stack']
-        # node_context = self.attention(node_primary, node_secondary)
-        # node_predict = self.predict(node_primary, node_context)
-        node_predict = self.pred_no_att(node_primary)
+        node_context = self.attention(node_primary, node_secondary)
+        node_predict = self.predict(node_primary, node_context)
+        # node_predict = self.pred_no_att(node_primary)
         return node_predict
 
 

@@ -3,6 +3,7 @@ import dgl
 import os
 import networkx as nx
 import torch
+import numpy as np
 import multiprocessing as multi
 multi.set_start_method('spawn', True)
 
@@ -14,21 +15,23 @@ def single_read(path, name):
         os.path.join(path, name, 'antigen.gpickle'))
     dgl_antibody = nx_to_dgl(nxgraph_antibody.graph_data)
     dgl_antigen = nx_to_dgl(nxgraph_antigen.graph_data)
+    print('read graph:', name)
     return [[dgl_antibody, nxgraph_antibody.matrix, nxgraph_antibody.name], [dgl_antigen, nxgraph_antigen.matrix, nxgraph_antigen.name]]
 
 
 def nx_to_dgl(nx_graph: nx.Graph):
     dgl_graph = dgl.DGLGraph()
     for node in nx_graph.nodes:
-        data = nx_graph.nodes[node]
+        nx_node_data = nx_graph.nodes[node]
+        dgl_node_data = {}
         ner_num = len(list(nx_graph.neighbors(node)))
-        data['feature'] = torch.tensor(
-            data['feature'], dtype=torch.float32).reshape(1, -1)
-        data['label'] = torch.tensor(
-            data['label'], dtype=torch.float32).reshape(1, -1)
-        data['neibors'] = torch.tensor(
+        dgl_node_data['feature'] = torch.tensor(
+            nx_node_data['feature'], dtype=torch.float32).reshape(1, -1)
+        dgl_node_data['label'] = torch.tensor(
+            nx_node_data['label'], dtype=torch.float32).reshape(1, -1)
+        dgl_node_data['neibors'] = torch.tensor(
             ner_num, dtype=torch.float32).reshape(1, -1)
-        dgl_graph.add_nodes(1, data)
+        dgl_graph.add_nodes(1, dgl_node_data)
         dgl_graph.add_edge(node, node)  # 添加自环
     for v0, v1 in nx_graph.edges:
         if v0 < v1:
@@ -78,6 +81,7 @@ class StructData():
         self.all_structed_data = self.pos_stuct_data+self.neg_stuct_data
         self.train_data, self.valid_data, self.test_data = self.split(
             self.all_structed_data, args.split_rate)
+        self.show_infos(self.pos_data)
 
     def multi_read(self, path):
         anti_names = os.listdir(path)
@@ -115,6 +119,21 @@ class StructData():
     def get_structed_data(self, data, label):
         digits = [item+[label] for item in data]
         return [SingleSample(item)for item in digits]
+
+    def show_infos(self, all_graphs):
+        antibody_infos, antigen_infos = [], []
+        for item in all_graphs:
+            antibody, antigen = item[0][0], item[1][0]
+            antibody_label = antibody.ndata['label'].detach().numpy()
+            antigen_label = antigen.ndata['label'].detach().numpy()
+            antibody_infos.append([int(sum(antibody_label)), len(
+                antibody_label), antibody.number_of_edges()])
+            antigen_infos.append([int(sum(antigen_label)), len(
+                antigen_label), antigen.number_of_edges()])
+        antibody_infos = np.sum(np.array(antibody_infos), axis=0)
+        antigen_infos = np.sum(np.array(antigen_infos), axis=0)
+        print(antibody_infos)
+        print(antigen_infos)
 
 
 if __name__ == '__main__':

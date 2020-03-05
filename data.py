@@ -1,8 +1,9 @@
 from Preprocess import dataset
 from Argset import global_args
+from PPI_dataset import ppi
 
 
-def main():
+def origin_data_main():
     args = global_args.get_dataprocess_args()
     # dataset.single_process(args, '1A3R_L.H_P_')
     dataset.generate_dataset(args)
@@ -10,4 +11,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # origin_data_main()
+    ppi.main()

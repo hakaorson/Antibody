@@ -23,25 +23,17 @@ def train(args, model: torch.nn.Module, data):
     # loss_weight = torch.tensor([1, 10], dtype=torch.float32)
     loss_fnc = torch.nn.CrossEntropyLoss()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learn_rate)
     model.train()
     epoch_loss = 0
     for batch_data in data:
         batch_loss = 0
-        # print('******************************************************')
         for item in batch_data:
-
             primary_node_target = item.antibody_dgl.ndata['label'].long(
             ).reshape(-1)
-            '''
-            primary_node_target = item.antibody_dgl.ndata['label']
-            '''
             pred_primary = model(
                 item.antibody_dgl, item.antibody_matrix, item.antigen_dgl, item.antigen_matrix)
             loss = loss_fnc(pred_primary, primary_node_target)
-
-            # print('loss', loss.detach().numpy())
-
             batch_loss += loss
         optimizer.zero_grad()
         batch_loss.backward()
