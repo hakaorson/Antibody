@@ -28,17 +28,20 @@ def train(args, model: torch.nn.Module, data):
     epoch_loss = 0
     for batch_data in data:
         batch_loss = 0
-        for item in batch_data:
-            primary_node_target = item.antibody_dgl.ndata['label'].long(
+        for graph_item in batch_data:
+            primary_node_target = graph_item.antibody_dgl.ndata['label'].long(
             ).reshape(-1)
             pred_primary = model(
-                item.antibody_dgl, item.antibody_matrix, item.antigen_dgl, item.antigen_matrix)
+                graph_item.antibody_dgl, graph_item.antibody_matrix, graph_item.antigen_dgl, graph_item.antigen_matrix)
             loss = loss_fnc(pred_primary, primary_node_target)
-            batch_loss += loss
-        optimizer.zero_grad()
-        batch_loss.backward()
-        optimizer.step()
-        epoch_loss += batch_loss
+            if torch.isnan(loss):
+                print(graph_item.antibody_name)
+            else:
+                batch_loss += loss
+                optimizer.zero_grad()
+                batch_loss.backward()
+                optimizer.step()
+                epoch_loss += batch_loss
     print(epoch_loss.detach().numpy())
     return model
 
@@ -46,11 +49,15 @@ def train(args, model: torch.nn.Module, data):
 def test(model, data):
     predict = []
     target = []
-    for item in data:
-        proba = model(item.dgl_data, item.mol_feat).detach().numpy()
-        pred = 0 if proba < 0.5 else 1
-        predict.append(pred)
-        target.append(int(item.target[0]))
+    for graph_item in data:
+        graph_proba = model(graph_item.antibody_dgl, graph_item.antibody_matrix,
+                            graph_item.antigen_dgl, graph_item.antigen_matrix).detach().numpy()
+        for node_item in graph_proba:
+            pred = 0 if node_item[0] > node_item[1] else 1
+            predict.append(pred)
+        graph_target = list(
+            graph_item.antibody_dgl.ndata['label'].detach().numpy())
+        target.extend(graph_target)
     auc = metrics.roc_auc_score(target, predict)
     print(auc)
 

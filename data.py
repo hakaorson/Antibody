@@ -11,5 +11,5 @@ def origin_data_main():
 
 
 if __name__ == '__main__':
-    # origin_data_main()
-    ppi.main()
+    origin_data_main()
+    # ppi.main()

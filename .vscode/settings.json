@@ -2,5 +2,5 @@
     "python.linting.flake8Enabled": true,
     "python.linting.pylintEnabled": false,
     "python.terminal.activateEnvironment": true,
-    "python.pythonPath": "/root/anaconda3/envs/bio/bin/python",
+    "python.pythonPath": "D:\\software\\Anaconda\\python.exe",
 }

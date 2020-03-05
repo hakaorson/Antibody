@@ -11,12 +11,22 @@ multi.set_start_method('spawn', True)
 def single_read(path, name):
     nxgraph_antibody = nx.read_gpickle(
         os.path.join(path, name, 'antibody.gpickle'))
+    
     nxgraph_antigen = nx.read_gpickle(
-        os.path.join(path, name, 'antigen.gpickle'))
-    dgl_antibody = nx_to_dgl(nxgraph_antibody.graph_data)
-    dgl_antigen = nx_to_dgl(nxgraph_antigen.graph_data)
-    print('read graph:', name)
-    return [[dgl_antibody, nxgraph_antibody.matrix, nxgraph_antibody.name], [dgl_antigen, nxgraph_antigen.matrix, nxgraph_antigen.name]]
+        os.path.join(path, name, 'antibody.gpickle'))
+    # TODO 这里改了，试试是不是attention不同网络的问题
+    for sub_node in nx.connected_components(nxgraph_antibody.graph_data):
+        pass
+    info = [[sum(nxgraph_antibody.node_label), len(nxgraph_antibody.node_label)], [sum(
+        nxgraph_antigen.node_label), len(nxgraph_antigen.node_label)]]
+    if info[0][0] == 0 or info[1][0] == 0 or info[0][0] == info[0][1] or info[1][0] == info[1][1]:
+        print('ignore graph:', name, info)
+        return None
+    else:
+        dgl_antibody = nx_to_dgl(nxgraph_antibody.graph_data)
+        dgl_antigen = nx_to_dgl(nxgraph_antigen.graph_data)
+        print('read graph:', name, info)
+        return [[dgl_antibody, nxgraph_antibody.matrix, nxgraph_antibody.name], [dgl_antigen, nxgraph_antigen.matrix, nxgraph_antigen.name]]
 
 
 def nx_to_dgl(nx_graph: nx.Graph):
@@ -73,8 +83,8 @@ class SingleSample():
 
 
 class StructData():
-    def __init__(self, args):
-        self.pos_data = self.multi_read(args.process_path)
+    def __init__(self, args, datapath):
+        self.pos_data = self.multi_read(datapath)
         self.neg_data = self.expand_neg_data(self.pos_data, args.neg_rate)
         self.pos_stuct_data = self.get_structed_data(self.pos_data, 1)
         self.neg_stuct_data = self.get_structed_data(self.neg_data, 0)
@@ -91,7 +101,10 @@ class StructData():
             result.append(pool.apply_async(single_read, (path, name,)))
         pool.close()
         pool.join()
-        result_get = [item.get() for item in result]
+        result_get = []
+        for item in result:
+            if item.get():
+                result_get.append(item.get())
         return result_get
 
     def expand_neg_data(self, pos_data, rate):
