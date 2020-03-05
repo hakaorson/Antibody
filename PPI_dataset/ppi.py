@@ -50,7 +50,7 @@ class NXGraph():
 
 def main():
     dataset_dir = 'Data/ppi'
-    process_ppi_dir = 'Data/process_ppi'
+    process_ppi_dir = 'Data/processed_ppi'
     G = json_graph.node_link_graph(
         json.load(open(dataset_dir + "/ppi-G.json")))
     all_nodes = G.nodes()

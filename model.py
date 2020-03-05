@@ -25,7 +25,7 @@ def main():
         model = trainer.train(args, model, train_data_gener)
         if epoch % 50 == 0:
             args.model_path = args.model_path + \
-                time.strftime('%m-%d-%H-%M', time.localtime())
+                time.strftime('-%m-%d-%H-%M', time.localtime())
             os.makedirs(args.model_path, exist_ok=True)
             path = os.path.join(
                 args.model_path, 'base_model_{0}.pt'.format(str(epoch)))
