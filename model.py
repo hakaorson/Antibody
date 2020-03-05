@@ -6,7 +6,6 @@ from Model import base_model
 from Model import model_loader
 import os
 import numpy as np
-import time
 import torch
 torch.manual_seed(1)
 np.random.seed(1)
@@ -24,8 +23,6 @@ def main():
         # test_data = all_data.pos_stuct_data[20:]
         model = trainer.train(args, model, train_data_gener)
         if epoch % 50 == 0:
-            args.model_path = args.model_path + \
-                time.strftime('-%m-%d-%H-%M', time.localtime())
             os.makedirs(args.model_path, exist_ok=True)
             path = os.path.join(
                 args.model_path, 'base_model_{0}.pt'.format(str(epoch)))
