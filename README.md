@@ -26,3 +26,6 @@ ssh gaopan@jump01.sh.sensetime.com
 (Google veriation)
 (AD password)
 10.5.34.21
+
+参考论文：Learning Context-aware Structural Representations to Predict Antigen and Antibody Binding Interfaces
+其他：暂时搁置，无法复现原论文结果，怀疑图神经网络无法提出论文中图结构的特征，可能是数据的问题
