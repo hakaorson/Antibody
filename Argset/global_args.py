@@ -3,9 +3,9 @@ import argparse
 
 def get_dataprocess_args():
     args = argparse.ArgumentParser()
-    args.add_argument('--expand_dist', type=int, default=3)  # 6
-    args.add_argument('--graph_dist', type=int, default=7)  # 10
-    args.add_argument('--interface_dist', type=float, default=4)  # 4.5
+    args.add_argument('--expand_dist', type=float, default=0.1)  # 8
+    args.add_argument('--graph_dist', type=float, default=10.0)  # 10
+    args.add_argument('--interface_dist', type=float, default=4.5)  # 4.5
 
     args.add_argument('--origin_path', type=str,
                       default='Data/origin_data')

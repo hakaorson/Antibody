@@ -27,7 +27,7 @@ class SingleGCN(nn.Module):
         digits = torch.mm(matrix, digits)
         digits = digits*rsqt_neibors
         digits = self.gcn_weight(digits)  # 会变小一个数量级？为什么？
-        # 没有添加激活层
+        # TODO 没有添加激活层
         dgl_data.ndata['hidden'] = digits
         dgl_data.ndata['stack'] = torch.cat(
             (dgl_data.ndata['hidden'], dgl_data.ndata['stack']), -1)

@@ -4,6 +4,7 @@ import os
 import networkx as nx
 import numpy as np
 import multiprocessing as multi
+import shutil
 multi.set_start_method('spawn', True)
 
 
@@ -26,6 +27,7 @@ def generate_dataset(args):
     o_path = args.origin_path
     p_path = args.process_path
     complex_names = get_complex_names(o_path)
+    shutil.rmtree(p_path)
     os.makedirs(p_path, exist_ok=True)
     result = []
     pool = multi.Pool(processes=10)
